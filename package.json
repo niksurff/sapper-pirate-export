@@ -18,6 +18,12 @@
   ],
   "author": "nikvm <hi@nikvm.me> (https://nikvm.me)",
   "license": "LIL",
+  "repository": {
+    "url": "https://github.com/nikvm/sapper-pirate-export"
+  },
+  "bugs": {
+    "url": "https://github.com/nikvm/sapper-pirate-export/issues"
+  },
   "description":
     "Pirate-grade config free static site generator, powered by Sapper",
   "dependencies": {
@@ -26,5 +32,8 @@
     "fs-extra": "^5.0.0",
     "node-fetch": "^1.7.3",
     "queue": "^4.4.2"
+  },
+  "engines": {
+    "node": ">= 8"
   }
 }

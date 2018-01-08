@@ -40,7 +40,8 @@ async function run(
     serverRequestConcurrency = 1200,
     serverRequestTimeout = 600,
     serverPort = 3000,
-    initialPaths = ["/", "/service-worker.js"]
+    initialPaths = ["/", "/service-worker.js"],
+    onPathExported = () => null
   } = {}
 ) {
   log("Started")
@@ -84,7 +85,9 @@ async function run(
     const destFile = isHTML ? path.join(pathname, "index.html") : pathname
 
     try {
-      pfs.writeFile(destFile, body)
+      const dest = await pfs.writeFile(destFile, body)
+      onPathExported(pathname, dest)
+
       if (isHTML) {
         extractPaths(body).forEach(path => fetchPath(path))
       }

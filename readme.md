@@ -28,9 +28,8 @@ Add the export script to your `package.json`. Optionally, activate the debug mod
 
 ```json
 "scripts": {
-    //...
     "export": "sapper build & npm run sapper-pirate-export",
-    "export:debug": "sapper build & npm run cross-env DEBUG=sapper-pirate-export* sapper-pirate-export"
+    "export:debug": "sapper build && cross-env DEBUG=sapper-pirate-export* npm run sapper-pirate-export"
 }
 ```
 
@@ -72,7 +71,7 @@ return fetch(`/api/blog/${slug}.json`)
 
 ### Finally, pirate export
 
-run `npm run export`. Files will be build into `.pirates`.
+run `npm run export`. Files will be exported into `.pirates/`.
 
 Test the export with something like `npx serve .pirates`
 
@@ -84,7 +83,7 @@ Meanwhile the server middleware is sending all requested urls back to the script
 
 All static files such as assets and JavaScript chunks just get copied over.
 
-Of course [this wasn't my idea](https://github.com/sveltejs/sapper/issues/9).
+Of course [this wasn't my idea](https://github.com/sveltejs/sapper/issues/9)!
 
 ## Roadmap
 

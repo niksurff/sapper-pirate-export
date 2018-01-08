@@ -1,8 +1,8 @@
 #! /usr/bin/env node
 
 const sapperPirateExport = require("../")
-
 const startTime = new Date()
+
 sapperPirateExport()
   .then(() => {
     const secondsSince = (new Date() - startTime) / 1000

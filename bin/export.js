@@ -2,9 +2,11 @@
 
 const sapperPirateExport = require("../")
 
+const startTime = new Date()
 sapperPirateExport()
   .then(() => {
-    console.log("Done.")
+    const secondsSince = (new Date() - startTime) / 1000
+    console.log(`Done after ${secondsSince} seconds.`)
     process.exit(0)
   })
   .catch(err => {

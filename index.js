@@ -1,137 +1,127 @@
-const debug = require("debug")("sapper-pirate-export")
+const log = require("./lib/logger")(/*pkg.name*/)
 const path = require("path")
-const fs = require("fs-extra")
-const { setTimeout } = require("timers")
-const { fork } = require("child_process")
-const requestQueue = require("./lib/request-queue")
+const {
+  setTimeout,
+  clearTimeout,
+  setInterval,
+  clearInterval
+} = require("timers")
+const queue = require("queue")
+const fetch = require("node-fetch")
 const extractPaths = require("./lib/extract-paths")
-const write = require("./lib/write")
-const setupServer = require("./lib/setup-server")
+const pirateServer = require("./lib/pirate-server")
+const pirateFileSystem = require("./lib/pirate-file-system")
+const pirateMemory = require("./lib/pirate-memory")
+const pirateURL = require("./lib/pirate-url")
 
-debug("Module required.")
+const sapperPirateExport = options =>
+  // I really don't know what I'm doing
+  // I need a resolve func inside run
+  //   in order to resolve the Promise from inside an event handler
+  new Promise((resolve, reject) => {
+    // How else to get around UnhandledPromiseRejectionWarning?
+    run(resolve, reject, options).catch(e => reject(e))
+  })
 
-const sapperPirateExport = async (options = {}) => {
-  debug("Export started with user config %O", options)
-
-  const script = options.serverScript || "server.js"
-  const server = await setupServer(script, { timeout: 3000 })
-
-  debug("Server process forked with pid %s", server.pid)
-
-  return run(server, options)
-}
-
-function run(
-  server,
+/**
+ * Runs the export process
+ * @param {Object} options - The exporter config
+ */
+async function run(
+  resolve,
+  reject,
   {
-    initialPaths = ["/", "/service-worker.js"],
-    serverPort = 3000,
-    serverRequestConcurrency = 1,
-    serverRequestTimeout = 500,
+    serverScript = "server.js",
     exportDir = ".pirates",
     assetsDir = "assets",
     sapperDir = ".sapper",
-    cwd = process.cwd()
+    cwd = process.cwd(),
+    serverStartupTimeout = 3000,
+    serverRequestConcurrency = 1200,
+    serverRequestTimeout = 600,
+    serverPort = 3000,
+    initialPaths = ["/", "/service-worker.js"]
   } = {}
 ) {
-  return new Promise((resolve, reject) => {
-    debug("Runner started")
+  log("Started")
 
-    const queue = requestQueue({
-      concurrency: serverRequestConcurrency,
-      timeout: serverRequestTimeout,
-      host: `http://localhost:${serverPort}`
+  // fs and server init may execute in parallel
+  const [server, pfs] = await Promise.all([
+    pirateServer(serverScript, { timeout: serverStartupTimeout }),
+    pirateFileSystem({
+      exportDir,
+      assetsDir,
+      sapperDir,
+      cwd
     })
+  ])
 
-    debug("Request queue set up")
-
-    const exportPath = path.join(cwd, exportDir)
-    const assetsPath = path.join(cwd, assetsDir)
-    const sapperPath = path.join(cwd, sapperDir)
-
-    debug("File paths calculated:")
-    debug("\t\t%s (sapper)", sapperPath)
-    debug("\t\t%s (assets)", assetsPath)
-    debug("\t\t%s (export)", exportPath)
-
-    queue.on("success", async response => {
-      debug("Successful response received from %s", response.url)
-
-      const url = response.url
-      const body = await response.text()
-      const contentType = response.headers.get("content-type")
-
-      try {
-        write({
-          url,
-          body,
-          contentType,
-          destPath: exportPath
-        })
-
-        if (contentType.includes("text/html")) {
-          const paths = extractPaths(body)
-          paths.forEach(path => {
-            queue.pushPath(path)
-            debug("Path %s extracted and queued", path)
-          })
-        }
-      } catch (e) {
-        reject(e)
-      }
-    })
-
-    server.on("message", ({ path }) => {
-      debug("Message from server received with path: %s", path)
-      path && queue.pushPath(path)
-    })
-
-    queue.on("error", err => reject(err))
-    queue.on("timeout", (con, job) => reject(job + "timed out"))
-    server.on("error", err => reject(err))
-
-    queue.on("end", () => {
-      debug("Queue empty, waiting for response...")
-      const timeout = setTimeout(() => {
-        // give some time for queue to fill up
-        if (queue.length) {
-          debug("Queue has %s new jobs, restarting...", queue.length)
-          queue.start()
-        } else {
-          debug(
-            "Queue has been empty for %sms, finishing up.",
-            serverRequestTimeout
-          )
-          resolve()
-        }
-      }, serverRequestTimeout)
-    })
-
-    // start here
-    fs
-      .emptyDir(exportPath)
-      .then(() =>
-        Promise.all([
-          fs.copy(assetsPath, exportPath),
-          fs.copy(
-            path.join(sapperPath, "client"),
-            path.join(exportPath, "client")
-          )
-        ])
-      )
-      .then(() => {
-        debug("Export dir emptied, assets and sapper files copied.")
-
-        initialPaths.forEach(path => {
-          queue.pushPath(path)
-          debug("Initial path queued %s", path)
-        })
-
-        queue.start()
-        debug("Queue started.")
-      })
-      .catch(err => reject(err))
+  const q = queue({
+    concurrency: serverRequestConcurrency,
+    timeout: serverRequestTimeout,
+    autostart: true // and keep running until we end() manually
   })
+
+  const pathSeen = pirateMemory()
+  const { makeURL, makePathname } = pirateURL(`http://localhost:${serverPort}`)
+  const fetchPath = path => {
+    if (pathSeen(path)) return
+
+    q.push(() => fetch(makeURL(path)))
+
+    log(`Pushed ${path} onto request queue`)
+  }
+
+  log("Setup utils")
+
+  const responseHandler = async response => {
+    log(`Received response from %s`, response.url)
+
+    const pathname = makePathname(response.url)
+    const body = await response.text()
+    const contentType = response.headers.get("content-type")
+    const isHTML = contentType.includes("text/html")
+    const destFile = isHTML ? path.join(pathname, "index.html") : pathname
+
+    try {
+      pfs.writeFile(destFile, body)
+      if (isHTML) {
+        extractPaths(body).forEach(path => fetchPath(path))
+      }
+    } catch (e) {
+      reject(e)
+    }
+  }
+
+  const queueEmptyHandler = () => {
+    log("Queue empty, waiting for jobs...")
+
+    const timer = setTimeout(() => {
+      if (q.length) return // queue has new jobs
+
+      log(`Queue has been empty for ${serverRequestTimeout}ms.`)
+      log(`Let's call it a day.`)
+      resolve()
+    }, serverRequestTimeout) // seems like a good number?
+  }
+
+  q.on("success", responseHandler)
+  q.on("end", queueEmptyHandler)
+  q.on("timeout", (next, job) => {
+    log(`Request %o timed out. Moving on...`, job)
+    next()
+  })
+  q.on("error", err => reject(err))
+
+  server.on("message", ({ path }) => path && fetchPath(path))
+  server.on("error", err => reject(err))
+
+  log("Setup event handlers")
+
+  // finally, setting things in motion...
+  initialPaths.forEach(path => fetchPath(path))
+
+  log("Initial paths queued")
 }
 
 module.exports = sapperPirateExport

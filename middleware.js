@@ -1,13 +1,16 @@
+const log = require("./lib/logger")("middleware")
 const { CANNONS_READY } = require("./lib/messages")
 
 const sapperPirateExportMiddleware = () => {
   let connected = false
 
-  // Signal exporter we're here and ready
-  process.on("message", ({ type }) => {
-    if (type === CANNONS_READY) {
+  // Signal exporter we're here
+  process.on("message", msg => {
+    if (msg === CANNONS_READY) {
+      log("Received connection signal from export process")
+
       connected = true
-      process.send({ type: CANNONS_READY })
+      process.send(CANNONS_READY)
     }
   })
 

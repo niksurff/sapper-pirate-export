@@ -1,0 +1,30 @@
+{
+  "name": "sapper-pirate-export",
+  "version": "0.0.1",
+  "main": "index.js",
+  "bin": {
+    "sapper-pirate-export": "bin/export.js"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "sapper",
+    "svelte",
+    "static",
+    "generator",
+    "static site generator",
+    "shmooo"
+  ],
+  "author": "nikvm <hi@nikvm.me> (https://nikvm.me)",
+  "license": "LIL",
+  "description":
+    "Pirate-grade config free static site generator, powered by Sapper",
+  "dependencies": {
+    "cheerio": "^1.0.0-rc.2",
+    "debug": "^3.1.0",
+    "fs-extra": "^5.0.0",
+    "node-fetch": "^1.7.3",
+    "queue": "^4.4.2"
+  }
+}
